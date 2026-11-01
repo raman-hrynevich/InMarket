@@ -6,11 +6,11 @@
 
 <!-- If you rename the SonarCloud project, update the project key in both badges. -->
 
-A multi-vendor marketplace built as .NET services: sellers list products, buyers browse them, and everyone gets real-time notifications. The focus is on the parts that are hard in production — asynchronous messaging that survives failures, two identity providers running side by side, and role- and owner-based access control.
+A .NET microservices sandbox built around a simple product catalog: users browse products, sellers manage their own listings, and everyone gets real-time notifications. The focus is on the parts that are hard in production — asynchronous messaging that survives failures, two identity providers running side by side, and role- and owner-based access control.
 
 ## About this project
 
-InMarket is a personal project I build in my own time to explore marketplace architecture outside of work — things that are hard to try on a production system. It is written from scratch and contains no code, data or configuration from any employer or client.
+InMarket is a personal project I build in my own time to explore distributed .NET architecture outside of work — things that are hard to try on a production system. It is written from scratch and contains no code, data or configuration from any employer or client.
 
 The technical choices here are deliberately different from the stack I use in commercial work:
 
