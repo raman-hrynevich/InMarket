@@ -6,7 +6,21 @@
 
 <!-- If you rename the SonarCloud project, update the project key in both badges. -->
 
-A multi-vendor marketplace built as .NET services: sellers list products, buyers browse them, and everyone gets real-time notifications. The focus is on the parts that are hard in production — asynchronous messaging that survives failures, two identity providers running side by side, and role- and owner-based access control.
+A .NET microservices sandbox built around a simple product catalog: users browse products, sellers manage their own listings, and everyone gets real-time notifications. The focus is on the parts that are hard in production — asynchronous messaging that survives failures, two identity providers running side by side, and role- and owner-based access control.
+
+## About this project
+
+InMarket is a personal project I build in my own time to explore distributed .NET architecture outside of work — things that are hard to try on a production system. It is written from scratch and contains no code, data or configuration from any employer or client.
+
+The technical choices here are deliberately different from the stack I use in commercial work:
+
+- **Two identity providers side by side** — Auth0 and Keycloak, with the login flow switched by an Unleash feature flag, to practise moving users between providers without downtime
+- **Feature-flagged rollouts** with a self-hosted Unleash server
+- **Real-time notifications** pushed to the right user over SignalR
+- **Polyglot persistence** — SQL Server for relational data, MongoDB for notifications
+- **Background jobs with Hangfire** for publishing events after a write
+- **React with hooks and context** instead of a global Redux store
+- **Self-hosted infrastructure in Docker** instead of managed cloud services
 
 <!-- Add a 30–60 second GIF here: log in → become a seller → create a product → notification pops up. -->
 <!-- ![demo](docs/demo.gif) -->
