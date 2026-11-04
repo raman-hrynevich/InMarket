@@ -47,6 +47,12 @@ public static class AuthExtensions
         {
             options.Authority = keycloakSettings.Authority;
             options.RequireHttpsMetadata = false;
+            if (!string.IsNullOrWhiteSpace(keycloakSettings.InternalAuthority))
+            {
+                options.BackchannelHttpHandler = new KeycloakBackchannelHandler(
+                    keycloakSettings.Authority,
+                    keycloakSettings.InternalAuthority);
+            }
 
             options.TokenValidationParameters = new TokenValidationParameters
             {
