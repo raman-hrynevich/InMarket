@@ -99,30 +99,37 @@ NotificationService/
   NotificationService.Infrastructure/  MongoDB repository
   NotificationService.Domain/          entities, exceptions
 frontend/                    React SPA (features: Auth, Product, Category, Profile)
-docker-compose.yml           SQL Server, Keycloak, Unleash (+ Postgres for Unleash)
+docker-compose.yml           local stack: SQL Server, Keycloak, Unleash, RabbitMQ, MongoDB, both APIs, frontend
 ```
 
 ## Run locally
 
-Prerequisites: .NET 9 SDK, Node.js (version supported by Vite 7), Docker.
+Prerequisite: Docker Desktop, with about 4 GB of memory for the Linux VM. SQL Server needs roughly 2 GB of that.
 
 ```bash
-# 1. Infrastructure: SQL Server, Keycloak, Unleash
-docker compose up -d
-
-# 2. RabbitMQ and MongoDB (not in docker-compose.yml yet)
-docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management
-docker run -d --name mongodb -p 27017:27017 mongo
-
-# 3. Services (configure Auth0/Keycloak/Unleash settings in appsettings.Development.json or user-secrets)
-dotnet run --project ProductService/ProductService            # http://localhost:5010, API docs at /scalar
-dotnet run --project NotificationService/NotificationService  # http://localhost:5083, Swagger at /swagger
-
-# 4. Frontend (set VITE_API_URL, VITE_AUTH0_*, VITE_KEYCLOAK_URL in frontend/.env.local)
-cd frontend && npm ci && npm run dev
+docker compose up -d --build
 ```
 
-<!-- Target state: one `docker compose up` that starts everything, with pinned image versions and a .env.example. Update this section when done. -->
+The first start downloads the images and builds ProductService, NotificationService and the SPA. Open:
+
+| What | URL |
+| --- | --- |
+| Storefront | http://localhost:5173 |
+| ProductService (Scalar) | http://localhost:5010/scalar |
+| NotificationService (Swagger) | http://localhost:5083/swagger |
+| Keycloak | http://localhost:8080 |
+| Unleash | http://localhost:4242 |
+| RabbitMQ | http://localhost:15672 |
+
+The stack enables the Unleash flag `use-keycloak-auth`, so the storefront signs in through Keycloak.
+
+Copy `.env.example` to `.env` and set the passwords and tokens there before the first start. `.env` is gitignored. Compose refuses to start while those values are missing. Changing `DB_PASSWORD` after the first start needs `docker compose down -v`. Create Keycloak users in the admin console; the realm import does not contain passwords.
+
+`docker compose up -d --build` again after code changes. `docker compose down` stops the stack and keeps the database volumes.
+
+Auth0 stays in the service configuration, but this stack does not use it. Switching the flag back to Auth0 needs a real Auth0 client id baked into the frontend image (`AUTH0_CLIENT_ID` in `.env`, then rebuild).
+
+The stack uses MassTransit 8, which does not require a license key. Leave `MT_LICENSE` empty.
 
 ## Testing
 
@@ -130,12 +137,12 @@ cd frontend && npm ci && npm run dev
 dotnet test ProductService/ProductService.sln
 ```
 
-95 unit tests cover ProductService business services, AutoMapper profiles, the auth scheme selector and the Keycloak role transformation. Every push and pull request to `main` runs the tests with coverage and a SonarCloud analysis.
+114 unit tests cover ProductService business services, AutoMapper profiles, the auth scheme selector, the Keycloak role transformation and the Keycloak backchannel rewrite. Every push and pull request to `main` runs the tests with coverage and a SonarCloud analysis.
 
 ## Roadmap
 
 - [ ] Upgrade to .NET 10 (LTS)
-- [ ] Full stack in one `docker compose up`, pinned image versions, `.env.example`
+- [x] Full stack in one `docker compose up`, pinned image versions, `.env.example`
 - [ ] Integration tests with Testcontainers (SQL Server, RabbitMQ, MongoDB)
 - [ ] NotificationService and frontend in CI
 - [ ] Transactional Outbox via MassTransit EF Core

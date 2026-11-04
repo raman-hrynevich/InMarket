@@ -1,0 +1,58 @@
+{
+  "realm": "inmarket-realm",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": false,
+  "roles": {
+    "realm": [
+      { "name": "Buyer", "description": "Can browse the catalog", "composite": false, "clientRole": false },
+      { "name": "Seller", "description": "Can manage own products", "composite": false, "clientRole": false },
+      { "name": "Admin", "description": "Can manage categories", "composite": false, "clientRole": false },
+      {
+        "name": "default-roles-inmarket-realm",
+        "description": "Default realm roles",
+        "composite": true,
+        "clientRole": false,
+        "composites": { "realm": ["Buyer"] }
+      }
+    ]
+  },
+  "defaultRole": {
+    "name": "default-roles-inmarket-realm",
+    "description": "Default realm roles",
+    "composite": true,
+    "clientRole": false,
+    "composites": { "realm": ["Buyer"] }
+  },
+  "clients": [
+    {
+      "clientId": "react-frontend",
+      "name": "InMarket SPA",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "rootUrl": "http://localhost:5173",
+      "baseUrl": "http://localhost:5173",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://localhost:5173/auth/callback",
+        "http://localhost:5173/silent-callback.html"
+      ],
+      "webOrigins": ["http://localhost:5173"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*"
+      }
+    }
+  ]
+}
