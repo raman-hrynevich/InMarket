@@ -1,42 +1,224 @@
+# Local stack. Defaults are for a developer machine; override them with a .env file.
+
 services:
   sqlserver:
-    image: mcr.microsoft.com/mssql/server:${MSSQL_VERSION:-2022-latest}
+    image: mcr.microsoft.com/mssql/server:2022-CU27-GDR1-ubuntu-22.04
     container_name: sqlserver-db
     environment:
-      - ACCEPT_EULA=Y
-      - MSSQL_SA_PASSWORD=${DB_PASSWORD:-YourStrong!Password123}
-      - MSSQL_TCP_PORT=1433
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD in .env}"
+      MSSQL_TCP_PORT: "1433"
     ports:
       - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - |
+          if [ -x /opt/mssql-tools18/bin/sqlcmd ]; then SQLCMD=/opt/mssql-tools18/bin/sqlcmd; else SQLCMD=/opt/mssql-tools/bin/sqlcmd; fi
+          "$$SQLCMD" -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -b -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 40s
+    restart: unless-stopped
 
   keycloak:
-    image: quay.io/keycloak/keycloak:latest
+    image: quay.io/keycloak/keycloak:26.8.1
     container_name: keycloak-server
     environment:
-      - KEYCLOAK_ADMIN=${KEYCLOAK_USER:-admin}
-      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_PASSWORD:-admin}
+      KC_BOOTSTRAP_ADMIN_USERNAME: "${KEYCLOAK_USER:?Set KEYCLOAK_USER in .env}"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "${KEYCLOAK_PASSWORD:?Set KEYCLOAK_PASSWORD in .env}"
+      KC_HOSTNAME: http://localhost:8080
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HEALTH_ENABLED: "true"
     ports:
       - "8080:8080"
-    command: start-dev
+    volumes:
+      - ./docker/keycloak/inmarket-realm-realm.json:/opt/keycloak/data/import/inmarket-realm-realm.json:ro
+    command: ["start-dev", "--import-realm"]
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    restart: unless-stopped
 
   unleash-db:
     image: postgres:15-alpine
     container_name: unleash-postgres
     environment:
-      - POSTGRES_DB=unleash
-      - POSTGRES_USER=unleash_user
-      - POSTGRES_PASSWORD=unleash_password
+      POSTGRES_DB: unleash
+      POSTGRES_USER: unleash_user
+      POSTGRES_PASSWORD: "${UNLEASH_DB_PASSWORD:?Set UNLEASH_DB_PASSWORD in .env}"
     ports:
       - "5432:5432"
+    volumes:
+      - unleash-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U unleash_user -d unleash"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
 
   unleash:
-    image: unleashorg/unleash-server:latest
+    image: unleashorg/unleash-server:6.9.0
     container_name: unleash-server
     ports:
       - "4242:4242"
     environment:
-      - DATABASE_URL=postgres://unleash_user:unleash_password@unleash-db/unleash
-      - DATABASE_SSL=false
-      - LOG_LEVEL=info
+      DATABASE_URL: postgres://unleash_user:${UNLEASH_DB_PASSWORD}@unleash-db:5432/unleash
+      DATABASE_SSL: "false"
+      LOG_LEVEL: info
+      UNLEASH_DEFAULT_ADMIN_USERNAME: "${UNLEASH_ADMIN_USERNAME:?Set UNLEASH_ADMIN_USERNAME in .env}"
+      UNLEASH_DEFAULT_ADMIN_PASSWORD: "${UNLEASH_ADMIN_PASSWORD:?Set UNLEASH_ADMIN_PASSWORD in .env}"
+      INIT_ADMIN_API_TOKENS: "${UNLEASH_ADMIN_TOKEN:?Set UNLEASH_ADMIN_TOKEN in .env}"
+      INIT_BACKEND_API_TOKENS: "${UNLEASH_BACKEND_TOKEN:?Set UNLEASH_BACKEND_TOKEN in .env}"
+      INIT_CLIENT_API_TOKENS: "${UNLEASH_BACKEND_TOKEN:?Set UNLEASH_BACKEND_TOKEN in .env}"
     depends_on:
-      - unleash-db
+      unleash-db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4242/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  unleash-bootstrap:
+    build:
+      context: ./docker/unleash
+    environment:
+      UNLEASH_URL: http://unleash:4242
+      UNLEASH_ADMIN_TOKEN: "${UNLEASH_ADMIN_TOKEN:?Set UNLEASH_ADMIN_TOKEN in .env}"
+      UNLEASH_ADMIN_USERNAME: "${UNLEASH_ADMIN_USERNAME:?Set UNLEASH_ADMIN_USERNAME in .env}"
+      UNLEASH_ADMIN_PASSWORD: "${UNLEASH_ADMIN_PASSWORD:?Set UNLEASH_ADMIN_PASSWORD in .env}"
+    depends_on:
+      unleash:
+        condition: service_healthy
+    restart: "no"
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: "${RABBITMQ_USER:?Set RABBITMQ_USER in .env}"
+      RABBITMQ_DEFAULT_PASS: "${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}"
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7.0
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  product-service:
+    build:
+      context: ./ProductService
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "8080"
+      RabbitMq__Host: rabbitmq
+      RabbitMq__VirtualHost: /
+      RabbitMq__Username: "${RABBITMQ_USER:?Set RABBITMQ_USER in .env}"
+      RabbitMq__Password: "${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}"
+      Keycloak__Authority: http://localhost:8080/realms/inmarket-realm
+      Keycloak__InternalAuthority: http://keycloak:8080/realms/inmarket-realm
+      Keycloak__ClientId: react-frontend
+      Keycloak__Scopes: openid profile email
+      Unleash__ApiUrl: http://unleash:4242/api/
+      Unleash__ApiToken: "${UNLEASH_BACKEND_TOKEN:?Set UNLEASH_BACKEND_TOKEN in .env}"
+      MT_LICENSE: "${MT_LICENSE:-}"
+      MT_LICENSE_PATH: "${MT_LICENSE_PATH:-}"
+    ports:
+      - "5010:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      unleash-bootstrap:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  notification-service:
+    build:
+      context: ./NotificationService
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "8080"
+      MongoSettings__ConnectionString: mongodb://mongodb:27017
+      MongoSettings__DatabaseName: inmarket
+      MongoSettings__CollectionName: notifications
+      RabbitMq__Host: rabbitmq
+      RabbitMq__VirtualHost: /
+      RabbitMq__Username: "${RABBITMQ_USER:?Set RABBITMQ_USER in .env}"
+      RabbitMq__Password: "${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}"
+      Keycloak__Authority: http://localhost:8080/realms/inmarket-realm
+      Keycloak__InternalAuthority: http://keycloak:8080/realms/inmarket-realm
+      MT_LICENSE: "${MT_LICENSE:-}"
+      MT_LICENSE_PATH: "${MT_LICENSE_PATH:-}"
+    ports:
+      - "5083:8080"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:5010/api
+        VITE_KEYCLOAK_URL: http://localhost:8080
+        VITE_AUTH0_DOMAIN: "${AUTH0_DOMAIN:-dev-lifelesssoul.eu.auth0.com}"
+        VITE_AUTH0_CLIENT_ID: "${AUTH0_CLIENT_ID:-local-unused}"
+        VITE_AUTH0_AUDIENCE: "${AUTH0_AUDIENCE:-https://inmarket-api}"
+    ports:
+      - "5173:80"
+    depends_on:
+      - product-service
+    restart: unless-stopped
+
+volumes:
+  sqlserver-data:
+  unleash-postgres-data:
+  rabbitmq-data:
+  mongodb-data:
